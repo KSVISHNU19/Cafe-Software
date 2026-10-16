@@ -1,0 +1,434 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Cafe {
+  id             String          @id @default(uuid())
+  name           String          @default("Cafe & Roastery")
+  tagline        String          @default("Artisan Coffee & Kitchen")
+  address        String          @default("142 Espresso Boulevard, Downtown")
+  phone          String          @default("+1 (555) 234-7890")
+  currency       String          @default("₹")
+  currencyCode   String          @default("INR")
+  timezone       String          @default("America/New_York")
+  taxRatePercent Float           @default(8.5)
+  receiptHeader  String          @default("Thank you for choosing Cafe!")
+  receiptFooter  String          @default("Wi-Fi: CafeGuest / Pass: artisanroast")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  users          User[]
+  categories     Category[]
+  products       Product[]
+  modifierGroups ModifierGroup[]
+  tables         CafeTable[]
+  reservations   Reservation[]
+  orders         Order[]
+  inventory      InventoryItem[]
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  customers      Customer[]
+  coupons        Coupon[]
+  expenses       Expense[]
+  shifts         Shift[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+}
+
+model User {
+  id           String      @id @default(uuid())
+  cafeId       String
+  cafe         Cafe        @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name         String
+  email        String      @unique
+  passwordHash String
+  role         String      @default("CASHIER") // OWNER, MANAGER, CASHIER, BARISTA, INVENTORY
+  active       Boolean     @default(true)
+  pinCode      String?     @default("1234")
+  avatar       String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  shifts       Shift[]
+  orders       Order[]     @relation("OrderCreatedBy")
+  auditLogs    AuditLog[]
+}
+
+model Category {
+  id           String      @id @default(uuid())
+  cafeId       String
+  cafe         Cafe        @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name         String
+  icon         String      @default("Coffee")
+  displayOrder Int         @default(0)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  products     Product[]
+}
+
+model Product {
+  id              String           @id @default(uuid())
+  cafeId          String
+  cafe            Cafe             @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name            String
+  sku             String           @unique
+  description     String?
+  image           String?
+  basePrice       Float
+  costPrice       Float            @default(0.0)
+  availability    Boolean          @default(true)
+  prepStation     String           @default("BARISTA") // BARISTA, KITCHEN, BAKERY
+  prepTimeMinutes Int              @default(3)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  variants        ProductVariant[]
+  productModifiers ProductModifierGroup[]
+  recipe          Recipe?
+}
+
+model ProductVariant {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String   // e.g. "Small", "Regular", "Large"
+  price     Float
+  sku       String?
+}
+
+model ModifierGroup {
+  id             String           @id @default(uuid())
+  cafeId         String
+  cafe           Cafe             @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name           String           // e.g. "Milk Choice", "Syrups", "Espresso Shot"
+  required       Boolean          @default(false)
+  minSelections  Int              @default(0)
+  maxSelections  Int              @default(1)
+  options        ModifierOption[]
+  productLinks   ProductModifierGroup[]
+}
+
+model ModifierOption {
+  id              String         @id @default(uuid())
+  modifierGroupId String
+  modifierGroup   ModifierGroup  @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  name            String         // e.g. "Oat Milk", "Almond Milk", "Vanilla Syrup", "Extra Shot"
+  price           Float          @default(0.0)
+  isDefault       Boolean        @default(false)
+}
+
+model ProductModifierGroup {
+  id              String        @id @default(uuid())
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  modifierGroupId String
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, modifierGroupId])
+}
+
+model CafeTable {
+  id            String        @id @default(uuid())
+  cafeId        String
+  cafe          Cafe          @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  tableNumber   String
+  capacity      Int           @default(4)
+  section       String        @default("Indoor Main Hall") // Indoor, Terrace, Balcony, Bar
+  status        String        @default("AVAILABLE") // AVAILABLE, OCCUPIED, RESERVED, NEEDS_CLEANING
+  currentOrderId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  orders        Order[]
+  reservations  Reservation[]
+}
+
+model Reservation {
+  id              String     @id @default(uuid())
+  cafeId          String
+  cafe            Cafe       @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  tableId         String?
+  table           CafeTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customerName    String
+  customerPhone   String?
+  partySize       Int        @default(2)
+  reservationTime DateTime
+  notes           String?
+  status          String     @default("CONFIRMED") // PENDING, CONFIRMED, SEATED, CANCELLED, COMPLETED
+  createdAt       DateTime   @default(now())
+}
+
+model Order {
+  id            String         @id @default(uuid())
+  cafeId        String
+  cafe          Cafe           @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  orderNumber   String         @unique // e.g. "BD-1042"
+  orderType     String         @default("DINE_IN") // DINE_IN, TAKEAWAY, DELIVERY
+  tableId       String?
+  table         CafeTable?     @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customerId    String?
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status        String         @default("PLACED") // DRAFT, PLACED, ACCEPTED, PREPARING, READY, COMPLETED, CANCELLED
+  paymentStatus String         @default("PENDING") // PENDING, PAID, REFUNDED, PARTIALLY_PAID
+  subtotal      Float
+  discount      Float          @default(0.0)
+  tax           Float          @default(0.0)
+  total         Float
+  notes         String?
+  createdById   String?
+  createdBy     User?          @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  items         OrderItem[]
+  payments      Payment[]
+  refunds       Refund[]
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  productName String
+  variantName String?  // e.g. "Large", "Regular"
+  quantity    Int      @default(1)
+  unitPrice   Float
+  subtotal    Float
+  notes       String?
+  status      String   @default("PENDING") // PENDING, PREPARING, READY, SERVED
+  prepStation String   @default("BARISTA")
+
+  modifiers   OrderItemModifier[]
+}
+
+model OrderItemModifier {
+  id                 String    @id @default(uuid())
+  orderItemId        String
+  orderItem          OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifierOptionName String
+  price              Float     @default(0.0)
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method         String   @default("CASH") // CASH, CARD, UPI, OTHER
+  amount         Float
+  status         String   @default("COMPLETED") // COMPLETED, PENDING, FAILED
+  tenderedAmount Float?
+  changeAmount   Float?
+  reference      String?
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model Refund {
+  id             String   @id @default(uuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount         Float
+  reason         String
+  authorizedBy   String?
+  createdAt      DateTime @default(now())
+}
+
+model InventoryItem {
+  id           String          @id @default(uuid())
+  cafeId       String
+  cafe         Cafe            @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name         String
+  sku          String          @unique
+  unit         String          @default("kg") // kg, g, l, ml, pcs
+  currentStock Float           @default(0.0)
+  reorderLevel Float           @default(5.0)
+  costPerUnit  Float           @default(0.0)
+  supplierId   String?
+  supplier     Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  movements    StockMovement[]
+  recipes      RecipeIngredient[]
+  poItems      PurchaseOrderItem[]
+}
+
+model Recipe {
+  id          String             @id @default(uuid())
+  productId   String             @unique
+  product     Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  notes       String?
+  ingredients RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  id               String        @id @default(uuid())
+  recipeId         String
+  recipe           Recipe        @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  inventoryItemId  String
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  quantityConsumed Float         // amount deducted per unit
+}
+
+model StockMovement {
+  id              String        @id @default(uuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  movementType    String        // PURCHASE, USAGE, WASTAGE, ADJUSTMENT, RETURN
+  quantity        Float         // Positive or negative
+  reason          String?
+  reference       String?       // Order ID, PO number, or manual note
+  createdById     String?
+  createdAt       DateTime      @default(now())
+}
+
+model Supplier {
+  id            String          @id @default(uuid())
+  cafeId        String
+  cafe          Cafe            @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+
+  items         InventoryItem[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  cafeId      String
+  cafe        Cafe                @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  poNumber    String              @unique
+  status      String              @default("PENDING") // PENDING, ORDERED, RECEIVED, CANCELLED
+  totalCost   Float               @default(0.0)
+  notes       String?
+  createdAt   DateTime            @default(now())
+  receivedAt  DateTime?
+
+  items       PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  quantity        Float
+  unitCost        Float
+  totalCost       Float
+}
+
+model Customer {
+  id            String               @id @default(uuid())
+  cafeId        String
+  cafe          Cafe                 @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  name          String
+  phone         String?
+  email         String?
+  loyaltyPoints Int                  @default(0)
+  totalSpent    Float                @default(0.0)
+  visitCount    Int                  @default(1)
+  notes         String?
+  createdAt     DateTime             @default(now())
+
+  orders        Order[]
+  transactions  LoyaltyTransaction[]
+}
+
+model LoyaltyTransaction {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  points     Int      // positive for earned, negative for redeemed
+  type       String   // EARNED, REDEEMED, ADJUSTED
+  reason     String?
+  orderId    String?
+  createdAt  DateTime @default(now())
+}
+
+model Coupon {
+  id            String   @id @default(uuid())
+  cafeId        String
+  cafe          Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  code          String   @unique
+  discountType  String   @default("PERCENTAGE") // PERCENTAGE or FIXED
+  discountValue Float
+  minOrderValue Float    @default(0.0)
+  maxDiscount   Float?
+  validFrom     DateTime @default(now())
+  validUntil    DateTime?
+  usageLimit    Int?
+  timesUsed     Int      @default(0)
+  active        Boolean  @default(true)
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  cafeId      String
+  cafe        Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  category    String   // Rent, Utilities, Wages, Coffee Beans/Supplies, Maintenance, Marketing
+  amount      Float
+  description String
+  date        DateTime @default(now())
+  receiptUrl  String?
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+}
+
+model Shift {
+  id                  String    @id @default(uuid())
+  cafeId              String
+  cafe                Cafe      @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime           DateTime  @default(now())
+  endTime             DateTime?
+  openingCash         Float     @default(150.0)
+  expectedClosingCash Float?
+  actualClosingCash   Float?
+  discrepancy         Float?
+  status              String    @default("OPEN") // OPEN, CLOSED
+  notes               String?
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  cafeId    String
+  cafe      Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g. "REFUND_APPROVED", "PRICE_OVERRIDE", "STOCK_ADJUSTMENT"
+  entity    String   // Order, Product, InventoryItem, User
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  cafeId    String
+  cafe      Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, WARNING, SUCCESS, URGENT
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
